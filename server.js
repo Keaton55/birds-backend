@@ -41,9 +41,11 @@ const db = knex({
 const frontendURL = "https://birds-75a718dbd1fa.herokuapp.com/"
 const app = express();
 
-app.use(bodyParser.json());
 app.use(cors({  origin: frontendURL,
-  methods: ['GET', 'POST', 'PUT', 'DELETE']}));
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true}));
+app.use(bodyParser.json());
+
 
 app.post('/regionCodes',async (req,res) => {
     const { regionType,parentRegionCode } = req.body;
