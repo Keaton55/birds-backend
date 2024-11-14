@@ -10,6 +10,8 @@ import multer from 'multer'
 import {Readable} from 'stream'
 
 
+const PORT = process.env.PORT || 3000;
+
 const ebirdapitoken = "7diic08tu248";
 const ipInfoToken = "82d36ab4cb6211";
 const googleMapsApiKey = "AIzaSyDGeHfu-v4GMrnG7QfCkIonz3mGraDo-oo"
@@ -369,6 +371,6 @@ app.get('/nonFriends/:userId', async (req, res) => {
 });
 
   
-app.listen(3001, () => {
-  console.log('App is running on port 3001');
+app.listen(PORT, () => {
+  console.log(`App is running on port ${PORT}`);
 });
