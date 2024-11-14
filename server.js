@@ -38,7 +38,7 @@ const db = knex({
   },
 });
 
-const frontendURL = "https://birds-75a718dbd1fa.herokuapp.com/"
+const frontendURL = "https://birds-75a718dbd1fa.herokuapp.com"
 const app = express();
 
 app.use(cors({  origin: frontendURL,
