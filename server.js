@@ -8,10 +8,6 @@ import https from 'https';
 import fs from 'fs'
 import multer from 'multer'
 import {Readable} from 'stream'
-import { config } from 'dotenv';
-
-
-config();
 
 
 const ebirdapitoken = "7diic08tu248";
@@ -24,19 +20,7 @@ const bunnyHostName = "storage.bunnycdn.com"
 
 const upload = multer();
 
-const db = knex({
-  client: 'pg',
-  connection: {
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASS,
-    database: process.env.DB_NAME,
-    port: 5432,
-    ssl: { rejectUnauthorized: true,
-      ca:fs.readFileSync(process.env.SSL_CERT_PATH).toString()
-    },
-  },
-});
+const db = "*"
 
 const frontendURL = "https://birds-75a718dbd1fa.herokuapp.com"
 const app = express();
