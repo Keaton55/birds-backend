@@ -60,6 +60,7 @@ app.post('/regionCodes',async (req,res) => {
 app.post('/register', async (req, res) => {
     const { email, name, password, userName } = req.body;
 
+    console.log(req.body)
     // Hash the password
     const hash = bcrypt.hashSync(password);
 
