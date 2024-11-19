@@ -28,6 +28,7 @@ const app = express();
 app.use(cors({  origin: "https://birds-75a718dbd1fa.herokuapp.com",
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true}));
+
 app.use(bodyParser.json());
 
 const db = knex({
@@ -59,7 +60,7 @@ app.post('/regionCodes',async (req,res) => {
 
 app.post('/register', async (req, res) => {
     const { email, name, password, userName } = req.body;
-
+    console.log("testing")
     console.log(req.body)
     // Hash the password
     const hash = bcrypt.hashSync(password);
