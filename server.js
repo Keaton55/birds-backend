@@ -40,6 +40,8 @@ const db = require('knex')({
 }
 });
 
+app.use(bodyParser.json());
+
 
 
 app.post('/regionCodes',async (req,res) => {
