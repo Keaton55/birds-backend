@@ -30,7 +30,7 @@ app.use(cors({  origin: "https://birds-75a718dbd1fa.herokuapp.com",
   credentials: true}));
 app.use(bodyParser.json());
 
-const db = require('knex')({
+const db = knex({
   client: 'pg',
   connection: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
