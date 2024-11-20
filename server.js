@@ -62,7 +62,6 @@ app.post('/register', async (req, res) => {
     const { email, name, password, userName } = req.body;
     // Hash the password
     const hash = bcrypt.hashSync(password);
-    db.select('email').from('Users').then(data => console.log(data))
     try {
         // Start transaction
         await db.transaction(async (trx) => {
