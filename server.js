@@ -69,7 +69,7 @@ app.post('/register', async (req, res) => {
         // Start transaction
         await db.transaction(async (trx) => {
             // Insert into 'Login' table
-            const loginEmail = await trx('Login')
+            const loginEmail = await trx('public.Login')
                 .insert({
                     hash: hash,
                     email: email
@@ -77,7 +77,7 @@ app.post('/register', async (req, res) => {
                 .returning('email');
 
             // Insert into 'Users' table using the returned email
-            const user = await trx('Users')
+            const user = await trx('public.Users')
                 .returning('*')
                 .insert({
                     email: loginEmail[0].email, // Accessing the first element in the returned array
