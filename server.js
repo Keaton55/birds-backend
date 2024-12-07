@@ -10,7 +10,7 @@ import multer from 'multer'
 import {Readable} from 'stream'
 
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 const ebirdapitoken = "7diic08tu248";
 const ipInfoToken = "82d36ab4cb6211";
@@ -21,20 +21,33 @@ const bunnyFolder = "images"
 const bunnyHostName = "storage.bunnycdn.com"
 
 const upload = multer();
+const orgin = process.env.FRONTEND_URL || 'http://localhost:3000'
 
-const frontendURL = "https://birds-75a718dbd1fa.herokuapp.com"
 const app = express();
 
-app.use(cors({  origin: "https://birds-75a718dbd1fa.herokuapp.com",
+
+app.use(cors({  origin: orgin,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true}));
 
+
 app.use(bodyParser.json());
 
-const db = knex({
+
+const db = process.env.DATABASE_URL ? knex({
   client: 'pg',
   connection: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
+}) : knex({
+  client: 'pg',
+  connection: {
+    host: 'c97r84s7psuajm.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com',
+    port: '5432',
+    user: 'ufk4pmufstupu8',
+    database: 'dce5imh0prap07',
+    password: 'pbba7b9f153f1f38cbcb25e57079b6c954e57b327940a5217587c19b5ea29bdd2',
+    ssl: { rejectUnauthorized: false },
+  },
 });
 
 app.use(bodyParser.json());
@@ -320,7 +333,7 @@ app.get('/friendsList/:userId', (req, res) => {
     db('Friends')
     .where('UserId', userId) // Query using Knex
     .select('*')
-    .leftJoin('Users','Friends.FriendId','Users.ID')
+    .leftJoin('Users','Friends.FriendId','Users.Id')
     .then(data => {
       res.json(data); // Send back the data as JSON
     })
@@ -344,12 +357,12 @@ app.get('/nonFriends/:userId', async (req, res) => {
     try {
       // Fetch all users that the current user is NOT friends with
       const nonFriends = await db('Users')
-        .whereNotIn('ID', function() {
+        .whereNotIn('Id', function() {
           this.select('FriendId')
             .from('Friends')
             .where('UserId', userId); // Exclude users who are already friends
         })
-        .andWhereNot('ID', userId) // Exclude the current user themselves
+        .andWhereNot('Id', userId) // Exclude the current user themselves
         .select('*'); // Select the fields you need (e.g., ID, name)
   
       res.json(nonFriends); // Send back the list of non-friends as JSON
