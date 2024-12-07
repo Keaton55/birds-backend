@@ -36,8 +36,12 @@ app.use(bodyParser.json());
 
 const db = process.env.DATABASE_URL ? knex({
   client: 'pg',
-  connection: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  connection: {
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false, // Use this for Heroku or AWS RDS
+    },
+  },
 }) : knex({
   client: 'pg',
   connection: {
