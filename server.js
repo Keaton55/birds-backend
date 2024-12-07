@@ -21,7 +21,7 @@ const bunnyFolder = "images"
 const bunnyHostName = "storage.bunnycdn.com"
 
 const upload = multer();
-const orgin = process.env.FRONTEND_URL || 'http://localhost:3000'
+const orgin = process.env.REACT_APP_BIRDS_FRONTEND_URL || 'http://localhost:3000'
 
 const app = express();
 
