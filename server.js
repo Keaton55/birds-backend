@@ -34,12 +34,13 @@ app.use(cors({  origin: orgin,
 app.use(bodyParser.json());
 
 
+
 const db = process.env.DATABASE_URL ? knex({
   client: 'pg',
   connection: {
     connectionString: process.env.DATABASE_URL,
     ssl: {
-      rejectUnauthorized: false, // Use this for Heroku or AWS RDS
+      rejectUnauthorized: false,
     },
   },
 }) : knex({
@@ -224,75 +225,109 @@ app.get('/speciesList', async (req, res) => {
   });
 
   
-  app.post('/imageUpload',upload.single('file'), async (req, res) => {
-    const { Bird_Id, User_Id, Description } = req.body;
-    const file = req.file; // Access the uploaded file
-    const ext = file.originalname.split('.').pop();
-
-    if (!file) {
-        return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    const urlDate = new Date().toISOString().replace(/[:.]/g, '-');
-    const date = new Date()
-
-    const uploadFile = () => {
-        return new Promise((resolve, reject) => {
-            const options = {
-                method: 'PUT',
-                host: bunnyHostName,
-                path: `/${bunnyStorageZone}/${bunnyFolder}/${User_Id}/${Bird_Id}/${urlDate}.${ext}`,
-                headers: {
-                    AccessKey: bunnyApiKey,
-                    'Content-Type': file.mimetype,
-                    'Content-Length': file.size
-                },
-            };
-
-            const request = https.request(options, (response) => {
-                let data = '';
-                response.on('data', (chunk) => {
-                    data += chunk.toString('utf8');
-                });
-                response.on('end', () => {
-                    if (response.statusCode === 201) {
-                        resolve(data);
-                    } else {
-                        reject(new Error(`Upload failed with status code: ${response.statusCode}`));
-                    }
-                });
-            });
-
-            request.on('error', (error) => {
-                reject(error);
-            });
-
-            // Convert buffer to readable stream and pipe to the request
-            const bufferStream = new Readable();
-            bufferStream.push(file.buffer);
-            bufferStream.push(null);
-            bufferStream.pipe(request);
-        });
-    };
-
+  app.post('/imageUpload', upload.array('file', 10), async (req, res) => {
     try {
-        const result = await uploadFile();
-
-        const picture = await db('Pictures').insert({
-            Bird_Id: Bird_Id,
-            Rating: 0,
-            User_Id: User_Id,
-            Description: Description,
-            URL: `https://Birds.b-cdn.net/${bunnyFolder}/${User_Id}/${Bird_Id}/${urlDate}.${ext}`,
-            Date: date
-        }).returning('*'); // Use returning to get the inserted data if needed
-        
-        res.status(200).json({ message: 'Image uploaded successfully' });
+      const { Description, User_Id, array } = req.body;
+      const files = req.files;
+  
+      // Debugging logs
+      console.log('Description:', Description);
+      console.log('User ID:', User_Id);
+      console.log('Array:', array);
+      console.log('Files:', files);
+  
+      if (!files || files.length === 0) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+  
+      if (!User_Id || !Description || !array) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+  
+      // Ensure `array` is parsed if sent as a string
+      const parsedArray = typeof array === 'string' ? JSON.parse(array) : array;
+  
+      const date = new Date();
+  
+      const post = await db('Posts')
+        .insert({
+          User_Id,
+          Description,
+          Date: date,
+          Likes: 0,
+        })
+        .returning('*');
+  
+      const postId = post[0].Id; // Ensure `id` is referenced correctly
+      // Upload files to Bunny CDN
+      const uploadFile = (URL, file) => {
+        return new Promise((resolve, reject) => {
+          const options = {
+            method: 'PUT',
+            host: bunnyHostName,
+            path: URL,
+            headers: {
+              AccessKey: bunnyApiKey,
+              'Content-Type': file.mimetype,
+              'Content-Length': file.size,
+            },
+          };
+  
+          const request = https.request(options, (response) => {
+            let data = '';
+            response.on('data', (chunk) => {
+              data += chunk.toString('utf8');
+            });
+            response.on('end', () => {
+              if (response.statusCode === 201) {
+                resolve(data);
+              } else {
+                reject(new Error(`Upload failed with status code: ${response.statusCode}`));
+              }
+            });
+          });
+  
+          request.on('error', (error) => {
+            reject(error);
+          });
+  
+          // Convert buffer to readable stream and pipe to the request
+          const bufferStream = new Readable();
+          bufferStream.push(file.buffer);
+          bufferStream.push(null);
+          bufferStream.pipe(request);
+        });
+      };
+  
+      // Process files and associate with birds
+      for (let i = 0; i < parsedArray.length; i++) {
+        try {
+          const ext = files[i].originalname.split('.').pop();
+          const URL = `https://Birds.b-cdn.net/${bunnyStorageZone}/${bunnyFolder}/${User_Id}/${postId}/${i}.${ext}`;
+          const URL_storage = `https://Birds.b-cdn.net/${bunnyFolder}/${User_Id}/${postId}/${i}.${ext}`;
+          await db('Pictures').insert({
+            User_Id,
+            Post_Id: postId,
+            Bird_Id: parsedArray[i].Bird_Id, // Ensure `Bird_Id` exists in parsedArray
+            URL: URL_storage,
+          });
+  
+          console.log(URL,files[i])
+          await uploadFile(URL, files[i]);
+        } catch (error) {
+          console.error(`Error uploading image at index ${i}:`, error.message);
+          return res.status(500).json({ error: `Error uploading image at index ${i}` });
+        }
+      }
+  
+      res.status(201).json({ message: 'Files uploaded successfully' });
     } catch (error) {
-        console.error('Error uploading image:', error.message);
-        res.status(500).json({ error: 'Error uploading image' });
+      console.error('Error handling upload:', error.message);
+      res.status(500).json({ error: 'Internal server error' });
     }
-});
+  });
+  
+  
 
 // Example: Express route to fetch data by Species_Codes array
 app.post('/speciesData', async (req, res) => {
@@ -300,7 +335,7 @@ app.post('/speciesData', async (req, res) => {
   
     try {
         const speciesWithPhotos = await db
-          .select('Taxonomy.*', 'Pictures.URL', 'Pictures.Rating')
+          .select('Taxonomy.*', 'Pictures.URL')
           .from('Taxonomy')
           .leftJoin('Pictures', 'Taxonomy.Species_Code', 'Pictures.Bird_Id')
           .whereIn('Taxonomy.Species_Code', speciesCodes)
@@ -308,8 +343,7 @@ app.post('/speciesData', async (req, res) => {
             this.where('Pictures.User_Id', userId).orWhereNull('Pictures.User_Id'); // Include species without pictures
           })
           .distinctOn('Taxonomy.Species_Code') // PostgreSQL-specific distinct on column
-          .orderBy('Taxonomy.Species_Code')
-          .orderBy('Pictures.Rating', 'desc'); 
+          .orderBy('Taxonomy.Species_Code');
 
       res.json(speciesWithPhotos); // Return species data with highest-rated photos
     } catch (error) {
