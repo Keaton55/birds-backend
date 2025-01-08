@@ -33,7 +33,7 @@ app.use(cors({  origin: orgin,
 
 app.use(bodyParser.json());
 
-
+app.set('trust proxy', true); 
 
 const db = process.env.DATABASE_URL ? knex({
   client: 'pg',
