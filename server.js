@@ -352,19 +352,57 @@ app.post('/speciesData', async (req, res) => {
     }
   })
 
-// Example: Express route to fetch data by User_Id
-app.post('/photoData', (req, res) => {
-    const {userId} = req.body
-    db('Pictures')
-    .where('User_Id', userId) // Query using Knex
-    .select('*')
-    .then(data => {
-      res.json(data); // Send back the data as JSON
-    })
-    .catch(err => {
-      res.status(500).json({ error: 'Database query failed' });
-    });
-});
+  app.post('/photoData', async (req, res) => {
+    const { userId } = req.body; // Use req.body for POST requests
+    try {
+      // Fetch posts and the first picture for each post
+      const postsData = await db('Pictures')
+        .where('Posts.User_Id', userId) // Filter by the user's ID (likely from Posts table)
+        .select([
+          'Posts.Id as Post_Id',
+          'Posts.Description as PostDescription',
+          'Posts.Date as PostDate',
+          'Pictures.URL as PictureURL',
+          'Pictures.Bird_Id as Bird_Id',
+          'Posts.Likes as Likes',
+          'Users.userName as userName'
+        ])
+        .leftJoin('Posts', 'Pictures.Post_Id', 'Posts.Id')
+        .leftJoin('Users', 'Posts.User_Id', 'Users.Id')
+        .groupBy(
+          'Posts.Id',
+          'Posts.Description',
+          'Posts.Date',
+          'Posts.Likes',
+          'Pictures.URL',
+          'Pictures.Bird_Id',
+          'Users.userName',
+          'Pictures.Id'
+        ) // Include all non-aggregated columns
+        .orderBy('Pictures.Id'); // Ensure the first picture is selected consistently
+  
+      // Transform the data to include only one picture per post
+      const transformedData = postsData.map((row) => {
+        const { Post_Id, PostDescription, PostDate, PictureURL, Bird_Id, Likes, userName } = row;
+  
+        return {
+          Post_Id,
+          PostDescription,
+          PostDate,
+          userName,
+          Likes,
+          PictureUrl : PictureURL,
+        };
+      });
+  
+      res.json(transformedData);
+    } catch (error) {
+      console.error('Database query failed:', error.message);
+      res.status(500).json({ error: 'Database query failed. Please try again later.' });
+    }
+  });
+  
+
 
 app.get('/friendsList/:userId', (req, res) => {
     const {userId} = req.params
@@ -410,19 +448,63 @@ app.get('/nonFriends/:userId', async (req, res) => {
     }
   });
   
-  app.get('/home/:userId', (req, res) => {
-    const {userId} = req.params
-    db('Friends')
-    .where('UserId', userId) // Query using Knex
-    .select('*')
-    .leftJoin('Pictures','Friends.FriendId','Pictures.User_Id')
-    .then(data => {
-      res.json(data); // Send back the data as JSON
-    })
-    .catch(err => {
-      res.status(500).json({ error: 'Database query failed' });
-    });
-});
+  app.get('/home/:userId', async (req, res) => {
+    const { userId } = req.params;
+  
+    try {
+      const postsData = await db('Friends')
+        .where('Friends.UserId', userId) // Filter by the user's ID
+        .select([
+          'Friends.FriendId',
+          'Friends.UserId',
+          'Posts.Id as Post_Id',
+          'Posts.Description as PostDescription',
+          'Posts.Date as PostDate',
+          'Pictures.URL as PictureURL',
+          'Pictures.Bird_Id as Bird_Id',
+          'Users.userName as userName', 
+          'Posts.Likes as Likes'
+        ])
+        .leftJoin('Pictures', 'Friends.FriendId', 'Pictures.User_Id')
+        .leftJoin('Posts', 'Pictures.Post_Id', 'Posts.Id')
+        .leftJoin('Users','Friends.UserId','Users.Id')
+  
+      // Group data by Post_Id
+      const groupedData = postsData.reduce((acc, row) => {
+        const { Post_Id, PostDescription, PostDate, PictureURL, FriendId, UserId, Bird_Id, userName, Likes } = row;
+  
+        if (!Post_Id) {
+          // Skip entries without a Post_Id
+          return acc;
+        }
+  
+        if (!acc[Post_Id]) {
+          acc[Post_Id] = {
+            Post_Id,
+            PostDescription,
+            PostDate,
+            UserId,
+            FriendId,
+            Pictures: [],
+            userName,
+            Likes
+          };
+        }
+  
+        if (PictureURL) {
+          acc[Post_Id].Pictures.push({url :PictureURL, birdId : Bird_Id});
+        }
+  
+        return acc;
+      }, {});
+  
+      res.json(Object.values(groupedData)); // Send grouped data as an array
+    } catch (error) {
+      console.error('Database query failed:', error.message);
+      res.status(500).json({ error: 'Database query failed. Please try again later.' });
+    }
+  });
+  
 
   
 app.listen(PORT, () => {
