@@ -33,8 +33,6 @@ app.use(cors({  origin: orgin,
 
 app.use(bodyParser.json());
 
-app.set('trust proxy', true); 
-
 const db = process.env.DATABASE_URL ? knex({
   client: 'pg',
   connection: {
@@ -188,8 +186,18 @@ app.get('/speciesList', async (req, res) => {
   app.get('/location', async (req, res) => {
     try {
       // Fetch location data from IPinfo
-      const ipInfoResponse = await fetch(`https://ipinfo.io?token=${ipInfoToken}`);
-      const ipInfoData = await ipInfoResponse.json();
+      const forwarded = req.headers['x-forwarded-for'];
+      const clientIp = forwarded ? forwarded.split(',')[0] : req.connection.remoteAddress;
+  
+      console.log(`Client IP: ${clientIp}`);
+  
+      // Call the ipinfo.io API with the extracted IP
+      const response = await fetch(`https://ipinfo.io/${clientIp}/json?token=${ipInfoToken}`);
+      const ipInfoData = await response.json();
+  
+      // Log and return the result
+      console.log('Geolocation Data:', ipInfoData);
+    
       const { loc } = ipInfoData; // loc is usually "latitude,longitude"
       const [latitude, longitude] = loc.split(',');
   
