@@ -20,7 +20,8 @@ const bunnyStorageZone = "birds"
 const bunnyFolder = "images"
 const bunnyHostName = "storage.bunnycdn.com"
 
-const upload = multer();
+const storage = multer.memoryStorage(); // Store files in memory for processing
+const upload = multer({ storage });
 const orgin = process.env.REACT_APP_BIRDS_FRONTEND_URL || 'http://localhost:3000'
 
 const app = express();
@@ -188,18 +189,14 @@ app.get('/speciesList', async (req, res) => {
       // Fetch location data from IPinfo
       const forwarded = req.headers['x-forwarded-for'];
       const clientIp = forwarded ? forwarded.split(',')[0] : req.connection.remoteAddress;
-  
-      console.log(`Client IP: ${clientIp}`);
-  
+      
       // Call the ipinfo.io API with the extracted IP
       const response = await fetch(`https://ipinfo.io/${clientIp}/json?token=${ipInfoToken}`);
       const ipInfoData = await response.json();
-  
-      // Log and return the result
-      console.log('Geolocation Data:', ipInfoData);
     
+
       const { loc } = ipInfoData; // loc is usually "latitude,longitude"
-      const [latitude, longitude] = loc.split(',');
+      const [latitude, longitude] = loc ? loc.split(',') : [38.7250,-109.5212];
   
       // Fetch detailed location data using Google Maps API
       const googleMapsResponse = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${googleMapsApiKey}`);
@@ -238,25 +235,29 @@ app.get('/speciesList', async (req, res) => {
       const { Description, User_Id, array } = req.body;
       const files = req.files;
   
-      // Debugging logs
-      console.log('Description:', Description);
-      console.log('User ID:', User_Id);
-      console.log('Array:', array);
-      console.log('Files:', files);
-  
+      // Validate input fields
       if (!files || files.length === 0) {
-        return res.status(400).json({ error: 'No file uploaded' });
+        return res.status(400).json({ error: 'No files uploaded' });
       }
-  
       if (!User_Id || !Description || !array) {
-        return res.status(400).json({ error: 'Missing required fields' });
+        return res.status(400).json({ error: 'Missing required fields: User_Id, Description, or array' });
       }
   
-      // Ensure `array` is parsed if sent as a string
-      const parsedArray = typeof array === 'string' ? JSON.parse(array) : array;
+      // Parse `array` to ensure it's a valid JSON object
+      let parsedArray;
+      try {
+        parsedArray = typeof array === 'string' ? JSON.parse(array) : array;
+      } catch (error) {
+        return res.status(400).json({ error: 'Invalid array format' });
+      }
   
+      // Ensure `parsedArray` matches the number of files
+      if (parsedArray.length !== files.length) {
+        return res.status(400).json({ error: 'Mismatch between files and bird data' });
+      }
+  
+      // Insert post metadata into the database
       const date = new Date();
-  
       const post = await db('Posts')
         .insert({
           User_Id,
@@ -266,8 +267,9 @@ app.get('/speciesList', async (req, res) => {
         })
         .returning('*');
   
-      const postId = post[0].Id; // Ensure `id` is referenced correctly
-      // Upload files to Bunny CDN
+      const postId = post[0].Id; // Ensure post ID is retrieved correctly
+  
+      // Helper function to upload files to Bunny CDN
       const uploadFile = (URL, file) => {
         return new Promise((resolve, reject) => {
           const options = {
@@ -282,24 +284,16 @@ app.get('/speciesList', async (req, res) => {
           };
   
           const request = https.request(options, (response) => {
-            let data = '';
-            response.on('data', (chunk) => {
-              data += chunk.toString('utf8');
-            });
-            response.on('end', () => {
-              if (response.statusCode === 201) {
-                resolve(data);
-              } else {
-                reject(new Error(`Upload failed with status code: ${response.statusCode}`));
-              }
-            });
+            if (response.statusCode === 201) {
+              resolve(true);
+            } else {
+              reject(new Error(`Upload failed with status code: ${response.statusCode}`));
+            }
           });
   
-          request.on('error', (error) => {
-            reject(error);
-          });
+          request.on('error', (error) => reject(error));
   
-          // Convert buffer to readable stream and pipe to the request
+          // Pipe the file buffer to Bunny CDN
           const bufferStream = new Readable();
           bufferStream.push(file.buffer);
           bufferStream.push(null);
@@ -307,28 +301,32 @@ app.get('/speciesList', async (req, res) => {
         });
       };
   
-      // Process files and associate with birds
-      for (let i = 0; i < parsedArray.length; i++) {
-        try {
-          const ext = files[i].originalname.split('.').pop();
-          const URL = `https://Birds.b-cdn.net/${bunnyStorageZone}/${bunnyFolder}/${User_Id}/${postId}/${i}.${ext}`;
-          const URL_storage = `https://Birds.b-cdn.net/${bunnyFolder}/${User_Id}/${postId}/${i}.${ext}`;
-          await db('Pictures').insert({
-            User_Id,
-            Post_Id: postId,
-            Bird_Id: parsedArray[i].Bird_Id, // Ensure `Bird_Id` exists in parsedArray
-            URL: URL_storage,
-          });
+      // Process each file and associate it with the bird
+      const uploadPromises = files.map(async (file, index) => {
+        const ext = file.originalname.split('.').pop(); // Extract file extension
+        const URL = `https://Birds.b-cdn.net/${bunnyStorageZone}/${bunnyFolder}/${User_Id}/${postId}/${index}.${ext}`;
+        const URL_storage = `https://Birds.b-cdn.net/${bunnyFolder}/${User_Id}/${postId}/${index}.${ext}`;
   
-          console.log(URL,files[i])
-          await uploadFile(URL, files[i]);
-        } catch (error) {
-          console.error(`Error uploading image at index ${i}:`, error.message);
-          return res.status(500).json({ error: `Error uploading image at index ${i}` });
+        if (!parsedArray[index]?.Bird_Id) {
+          throw new Error(`Bird_Id missing for file index ${index}`);
         }
-      }
   
-      res.status(201).json({ message: 'Files uploaded successfully' });
+        // Insert picture metadata into the database
+        await db('Pictures').insert({
+          User_Id,
+          Post_Id: postId,
+          Bird_Id: parsedArray[index].Bird_Id,
+          URL: URL_storage,
+        });
+  
+        // Upload the file to Bunny CDN
+        await uploadFile(URL, file);
+      });
+  
+      // Execute all uploads concurrently
+      await Promise.all(uploadPromises);
+  
+      res.status(201).json({ message: 'Files uploaded successfully', Post_Id: postId });
     } catch (error) {
       console.error('Error handling upload:', error.message);
       res.status(500).json({ error: 'Internal server error' });
