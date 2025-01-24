@@ -359,54 +359,44 @@ app.post('/speciesData', async (req, res) => {
   })
 
   app.post('/photoData', async (req, res) => {
-    const { userId } = req.body; // Use req.body for POST requests
+    const { userId } = req.body;
+  
     try {
-      // Fetch posts and the first picture for each post
-      const postsData = await db('Pictures')
-        .where('Posts.User_Id', userId) // Filter by the user's ID (likely from Posts table)
-        .select([
-          'Posts.Id as Post_Id',
-          'Posts.Description as PostDescription',
-          'Posts.Date as PostDate',
-          'Pictures.URL as PictureURL',
-          'Pictures.Bird_Id as Bird_Id',
-          'Posts.Likes as Likes',
-          'Users.userName as userName'
-        ])
-        .leftJoin('Posts', 'Pictures.Post_Id', 'Posts.Id')
-        .leftJoin('Users', 'Posts.User_Id', 'Users.Id')
-        .groupBy(
-          'Posts.Id',
-          'Posts.Description',
-          'Posts.Date',
-          'Posts.Likes',
-          'Pictures.URL',
-          'Pictures.Bird_Id',
-          'Users.userName',
-          'Pictures.Id'
-        ) // Include all non-aggregated columns
-        .orderBy('Pictures.Id'); // Ensure the first picture is selected consistently
+      const subquery = db('Pictures')
+      .select('Post_Id')
+      .min('Id as MinId')
+      .groupBy('Post_Id')
+      .as('Subquery');
+    
+    const data = await db('Pictures')
+      .select([
+        'Posts.Id as Post_Id',
+        'Posts.Description as PostDescription',
+        'Posts.Likes as Likes',
+        'Posts.Date as PostDate',
+        'Pictures.URL as FirstPictureURL',
+      ])
+      .leftJoin('Posts', 'Pictures.Post_Id', 'Posts.Id')
+      .innerJoin(subquery, 'Pictures.Id', 'Subquery.MinId') // Join on the minimum Id
+      .where('Posts.User_Id', userId)
+      .orderBy('Posts.Date', 'desc');
+    
+    
+    
+    
+    
+    
   
-      // Transform the data to include only one picture per post
-      const transformedData = postsData.map((row) => {
-        const { Post_Id, PostDescription, PostDate, PictureURL, Bird_Id, Likes, userName } = row;
   
-        return {
-          Post_Id,
-          PostDescription,
-          PostDate,
-          userName,
-          Likes,
-          PictureUrl : PictureURL,
-        };
-      });
-  
-      res.json(transformedData);
+      res.status(200).json(data);
     } catch (error) {
-      console.error('Database query failed:', error.message);
-      res.status(500).json({ error: 'Database query failed. Please try again later.' });
+      console.error('Error fetching photo data:', error.message);
+      res.status(500).json({ error: 'Failed to fetch photo data' });
     }
   });
+  
+  
+
   
 
 
